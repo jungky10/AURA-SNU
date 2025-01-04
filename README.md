@@ -8,8 +8,8 @@
 
 ## usage
 1. Run the application:
-2. Use the "Select Data File" button to load an `.edf` file.
-3. Use the "Select Event File" button to load an `.xlsx` event file from RemLogic.
+2. Use the "Select Data File" button to load a `.edf` file.
+3. Use the "Select Event File" button to load a `.xlsx` event file from RemLogic. Before selecting, please note that the event file extracted by REMLogic is in .txt format, so please change it to .xlsx.
 4. Use the "Select Result Folder" button to choose where to save the results.
 5. Click "Start Analysis" to begin the process.
 
