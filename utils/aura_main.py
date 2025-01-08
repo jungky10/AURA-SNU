@@ -17,14 +17,14 @@ def AURA_main(data,path,f_s,data_start,channels,data_length,event_path) :
     f_s = 200
     [EMG, channel,triggers] = filter_Seperate(data, start_index, channels)
     print("EMG channel:",channel)
-    [epochs, art_epochs, trgs] = make_REM_epochs(REM, artifacts)
+    [epochs, art_epochs] = make_REM_epochs(REM, artifacts)
     print("Making RMS...")
     rms = make_rms(EMG,epochs,f_s)
     print("Making REM Baseline...")
-    baseline = make_baseline(rms,REM, epochs, art_epochs,trgs)
+    baseline = make_baseline(rms, epochs, art_epochs)
     print("getting RWA...")
-    activity1 = make_activity(baseline, artifacts, EMG, f_s, epochs) ## 1차원 activity 도출
-    #################################################### 여기부터 뜯어고치기.
+    activity1,_ = make_activity(baseline, artifacts, EMG, f_s, epochs) ## [Activity, % of line noise artifacts]
+    #################################################### 
     channel = ['MT','AT','FDS','MT+FDS',"MT+AT+FDS"]
     activity_RA, RAIs = make_RAI(EMG, f_s, epochs, artifacts)
     activity_RA, RAIs = combine_rai(activity_RA, RAIs)

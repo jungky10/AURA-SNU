@@ -15,15 +15,41 @@ import io
 from matplotlib import pyplot as plt
 import datetime as dt
 import openpyxl as xl
-import matplotlib as mp
 import math 
 import numpy as np
 import sys
 import gc
+import re
 sys.setrecursionlimit(6000) 
 matplotlib.use('Qt5Agg')
 
 plt.style.use(['default'])
+
+RWA_Event = ["Any","Phasic", "Intermediate", "Tonic"]
+percentile = [50, 80, 95]
+ev_index = {
+    0 : [0,3,4], # Tonic
+    1 : [2,4], # Intermediate
+    2 : [1,3], # Phasic
+    3 : [0,1,2,3,4] # Any
+}
+
+ev_index_AASM = {
+    0 : [0], # Tonic
+    1 : [1], # Phasic
+    2 : [0,1,2], # Any
+}
+
+para = [
+    "CRWA_T","DURmean_T","DURp50_T","DURp80_T","DURp95_T","RWAI_T",
+    "CRWA_I","DURmean_I","DURp50_I","DURp80_I","DURp95_I","RWAI_I",
+    "CRWA_P","DURmean_P","DURp50_P","DURp80_P","DURp95_P","RWAI_P",
+    "CRWA_A","DURmean_A","DURp50_A","DURp80_A","DURp95_A","RWAI_A",
+] # CRWA: cumulative RWA%, DUR x: x percentile duration of individual RWA in total (sec), RWAI: num of RWA per hour
+
+act_duration = [[],[],[],[],[],[]]
+mean_duration = [[],[],[],[],[],[]]
+num_subjects = [ 0, 0, 0 ,0 ,0]
 
 def make_hypnogram_to_time(hypnogram, event_start):
     hypnogram = hypnogram.tolist()
@@ -33,11 +59,9 @@ def make_hypnogram_to_time(hypnogram, event_start):
         hypnogram[i][2] = hypnogram[i][2]
     return hypnogram
 
-
 def make_stage_event2(event_path, data_start):
     stage_label = {"N/A":7,"W":6,"S0":6,"N1":4,"S1":4,"N2":3,"S2":3,"N3":2,"S3":2,"R":5,"REM":5, "MT":1}
     param = ["Sleep Stage", "Position", "Time [hh:mm:ss.xxx]", "Event", "Duration[s]"]
-    ind = 0
     wb = load_workbook(filename=event_path)
     ws = wb.active # 혹은 wb['Sheet1'] 같이 특정 시트 이름을 사용
     day_start = data_start.strftime("%Y-%m-%d")
@@ -109,9 +133,7 @@ def make_stage_event2(event_path, data_start):
     hypnogram = make_hypnogram_to_time(hypnogram, event_start)
     return [REM_events, start_index, event_start,hypnogram,format]
     # sleep_event : [start_time, end_time]
-    
-    
-    
+      
 def make_stage_event(event_path, data_start):
     stage_label = {"N/A":7,"W":6,"S0":6,"N1":4,"S1":4,"N2":3,"S2":3,"N3":2,"S3":2,"R":5,"REM":5, "MT":1}
     param = ["Sleep Stage", "Position", "Time [hh:mm:ss.xxx]", "Event", "Duration[s]"]
@@ -230,7 +252,6 @@ def make_artifact2(event_path, event_start,format, REM):
    
     for i in range(5):
         for j in range(len(events)):
-            if duration[j] > 300: continue
             if 'arousal' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if 'rera' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if artifact[i] in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
@@ -296,7 +317,6 @@ def make_artifact(event_path, event_start,format, REM):
 
     for i in range(5):
         for j in range(len(events)):
-            if duration[j] > 300: continue
             if 'arousal' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if 'rera' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if artifact[i] in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
@@ -319,7 +339,6 @@ def make_artifact(event_path, event_start,format, REM):
     return [lists, AHI]
     # sleep_event : [start_time, end_time]
     
-import re
 def clean_string(s):
     return re.sub(r'[^0-9.:]', '', s)
 
@@ -409,6 +428,7 @@ def make_stage_event3(event_path, data_start):
     
  
     # sleep_event : [start_time, end_time]
+
 def make_artifact3(event_path, event_start,format, REM):
     AHI_list = ['apnea','hypopnea']
     artifact = ['artifact_chin','artifact_rarm','artifact_larm','artifact_rleg','artifact_lleg']
@@ -454,7 +474,6 @@ def make_artifact3(event_path, event_start,format, REM):
    
     for i in range(5):
         for j in range(len(events)):
-            if duration[j] > 300: continue
             if 'arousal' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if 'rera' in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
             if artifact[i] in events[j].lower(): lists[i].append([times[j],times[j]+ duration[j]])
@@ -476,8 +495,7 @@ def make_artifact3(event_path, event_start,format, REM):
             lists[i]= np.array(lists[i])  
     return [lists, AHI]
     # sleep_event : [start_time, end_time]
-
-    
+  
 def calc_AHI( AHIs, REMs):
     total_AHI = total_REM = 0
     for rem in REMs:
@@ -496,9 +514,6 @@ def calc_AHI( AHIs, REMs):
     
     return AHI
     
-        
-
-
 def make_REM_period(events):
     REM = [np.empty((0,2),int) for _ in events]
     
@@ -520,16 +535,15 @@ def fit_to_channel(channel,REM, l):
         
     return fit_REM
     
-
-def filter_Seperate(data, start_index, channels):
+def filter_Seperate(data,start_index, channels):
     
     pickss = [0,0,0,0,0]
     ch_names = []
     for i in range(len(channels)):
-        if ("chin" in channels[i].lower()) or ("mentalis" in channels[i].lower()) or ("lower.left" in channels[i].lower()):
+        if ("chin" in channels[i].lower()) or ("mentalis" in channels[i].lower()) or ("lower.left" in channels[i].lower()) or ("subm" in channels[i].lower()):
             pickss[0] = channels[i]
             ch_names.append(channels[i])
-        elif ("leg" in channels[i].lower()) or ('tibialis' in channels[i].lower()):
+        elif ("leg" in channels[i].lower()) or ('tibialis' in channels[i].lower()) or ('tib-' in channels[i].lower()):
             if 'r' in channels[i].lower() :
                 pickss[1] = channels[i]
                 ch_names.append(channels[i])
@@ -544,7 +558,7 @@ def filter_Seperate(data, start_index, channels):
     datas = data.copy().pick_channels(picks, ordered = True)
     noise_freq = 60
     datas.notch_filter(noise_freq)
-    data_filt = datas.copy().filter(l_freq=10, h_freq = 100)
+    data_filt = datas.copy().filter(l_freq=10, h_freq = 80)
     data_res = data_filt.resample(200)
     f_EMG_data = data_res.get_data()   #make filtered EMG_data
     RTA_EMG = []
@@ -593,6 +607,7 @@ def filter_Seperate(data, start_index, channels):
         trg[2] = False; trg[3] = False;trg[4] = False
 
     return [EMG, ch, trg]
+
 def make_REM(REMs, artifacts):
     epochs = [np.empty((0,2),int) for _ in artifacts] 
 
@@ -613,7 +628,6 @@ def make_REM(REMs, artifacts):
 
 def make_REM_epochs(REMs, artifacts):
     epochs = [np.empty((0,2),int) for _ in artifacts]
-    mini = [np.empty((0,2),int) for _ in artifacts] 
     base_trgs= [[] for _ in artifacts] 
     trgs = []
     
@@ -674,17 +688,11 @@ def make_REM_epochs(REMs, artifacts):
                     epochs[i] = np.append(epochs[i], np.array([[start,t_end]]),axis =0)
                     start+=30
                 else : break   
-    a= 2 
 
-    return [epochs, base_trgs, trgs]
-
+    return [epochs, base_trgs]
 
 def RMS(E):
-    # E2 = np.power(E,2)
-    # window = np.ones(len(E))/float(len(E))
     rms = np.sqrt(np.mean(np.square(E)))
-
-    # return rms
     return rms
 
 def make_rms(EMG, epochs , f_s):
@@ -705,8 +713,7 @@ def make_rms(EMG, epochs , f_s):
             rms = RMS(E[epoch_start : epoch_end])
             if rms < 0.05e-06:
                 rms = 11
-            # if rms > 5e-06:
-            #     rms = 11
+
             epoch_rms[i][j] = rms
             
             j+=1
@@ -715,8 +722,7 @@ def make_rms(EMG, epochs , f_s):
         i+=1
     return epoch_rms
 
-
-def make_baseline(epoch_rms,REMs, epochs, art_epochs, trgs):
+def make_baseline(epoch_rms, epochs, art_epochs):
     baselines = []
     res_baselines = []
     for i in range(len(epochs)):
@@ -731,14 +737,12 @@ def make_baseline(epoch_rms,REMs, epochs, art_epochs, trgs):
         length =  epochs[i][0][1] - epochs[i][0][0] 
         num = period // length
         eps = []
-        bases = []
         for j in range(len(epochs[i])):
-            if art_epochs[i][j] ==1: #1이 없는거
+            if art_epochs[i][j] ==1:
                 eps.append(j)
 
         ind = 0
         for j in range(1,len(eps)):
-            # if eps[j] - eps[j-1] != 1 or eps[j] - ind == num:
             if epochs[i][eps[j]][0] - epochs[i][eps[j-1]][1] > 1:
                 if eps[j] - ind >= num:
                     base = np.min(epoch_rms[i][ind:eps[j]])
@@ -768,12 +772,6 @@ def make_baseline(epoch_rms,REMs, epochs, art_epochs, trgs):
                     res_baselines[l][i] = baseline[L_index]
                 elif diff_L == diff_R:
                     res_baselines[l][i] = (baseline[R_index] + baseline[L_index])/2
-                # if diff_L <= period and diff_R <= period:
-                #     baseline[i] = (baseline[R_index] + baseline[L_index])/2
-                # elif diff_L <= period and diff_R > period:
-                #     baseline[i] = baseline[L_index]
-                # elif diff_R <= period and diff_L > period :
-                #     baseline[i] = baseline[R_index]
             else:
                 res_baselines[l][i] = baseline[i]
         l+=1
@@ -786,91 +784,200 @@ def make_baseline(epoch_rms,REMs, epochs, art_epochs, trgs):
         
     return res_baselines
 
-
-def make_activity(baselines, artifacts , EMGs, f_s ,epochs ) :
-    bouts = int(0.03 * f_s)
-    activitys  = [np.empty((0,3),int) for _ in range(len(baselines))]
-    activities  = [np.empty((0,3),int) for _ in range(len(baselines))]
-    res_activities  = [np.empty((0,3),int) for _ in range(len(baselines))]
+def make_activity(baselines, artifacts, EMGs, f_s, epochs):
+    """
+    Detect and process 'activity' segments in EMG signals based on provided baselines, epochs, and artifacts.
     
-    for i in range(len(baselines)):
-        for j in range(len(baselines[i])):
-            baseline2 = baselines[i][j]*2
-            start = epochs[i][j][0] * f_s
-            end = epochs[i][j][1] * f_s
-            t_end = start + bouts
+    Parameters
+    ----------
+    baselines : list of lists
+        Each element is a list of baseline RMS values for a given channel.
+    artifacts : list of arrays
+        Each element is an array of artifact time intervals (start, end).
+    EMGs : list of arrays
+        Each element is the EMG signal for a given channel.
+    f_s : float
+        Sampling frequency of the EMG signals.
+    epochs : list of lists
+        Each element is a list of (start, end) epoch times for that channel.
+        
+    Returns
+    -------
+    final_activities : list of np.arrays
+        Each element contains detected activity segments [start_idx, end_idx, 1]
+        after merging and filtering for artifacts.
+    """
 
+    # Define analysis window step size: 0.015 seconds * f_s samples
+    step_size = int(0.015 * f_s)
+    # Define minimal initial detection window size: 0.03 seconds * f_s samples
+    initial_bouts = int(0.03 * f_s)
+    count =[0,0,0,0,0]
+    r_count =[0,0,0,0,0]
+    
+    # Initialize lists for storing detected activities at various stages
+    detected_segments = [np.empty((0, 3), int) for _ in range(len(baselines))]
+    merged_segments = [np.empty((0, 3), int) for _ in range(len(baselines))]
+    final_activities = [np.empty((0, 3), int) for _ in range(len(baselines))]
+
+    for ch_idx in range(len(baselines)):
+        baseline_values = baselines[ch_idx]
+        channel_EMG = EMGs[ch_idx]
+        channel_artifacts = artifacts[ch_idx]
+        channel_epochs = epochs[ch_idx]
+
+        for epoch_idx, baseline in enumerate(baseline_values):
+            # Threshold for detection
+            detection_threshold = baseline * 2
+
+            # Get epoch start and end in samples
+            epoch_start = int(channel_epochs[epoch_idx][0] * f_s)
+            epoch_end = int(channel_epochs[epoch_idx][1] * f_s)
+
+            # Initialize pointers
+            start_ptr = epoch_start
+            end_ptr = start_ptr + initial_bouts
+
+            # Variables to keep track of active detection phases
             up_duration = 0
             down_duration = 0
-            odd_trg= False
-            while t_end <= end :
-                rms = RMS(EMGs[i][start : t_end])
+            odd_triggered = False
+            activity_start = 0
+
+            while end_ptr <= epoch_end:
+                # Compute RMS in current window
+                window_rms = RMS(channel_EMG[start_ptr:end_ptr])
+
+                # If we are not yet in a prolonged active state
                 if up_duration <= 0.1 * f_s:
-                    if rms >= baseline2:
-                        if len(activitys[i]) != 0 and start - activitys[i][-1][1] < 0.25*f_s:
-                            activity_start = int(start - 0.105*f_s)
-                            up_duration = int(0.105*f_s)
-                            odd_trg = True
+                    if window_rms >= detection_threshold:
+                        # Extend ongoing activity if close to previous segment
+                        if len(detected_segments[ch_idx]) != 0 and (start_ptr - detected_segments[ch_idx][-1][1]) < 0.25 * f_s:
+                            activity_start = int(start_ptr - 0.105 * f_s)
+                            up_duration = int(0.105 * f_s)
+                            odd_triggered = True
+                        # Start a new activity segment if none is ongoing
                         if up_duration == 0:
-                            activity_start = start
-                            up_duration += int(0.015 * f_s)
-                        if activity_start != 0:
-                            down_duration = 0
-                            up_duration += int(0.015 * f_s)
-                    else:
-                        up_duration =0
-                else:
-                    if rms >= baseline2:
-                        up_duration += int(0.015 * f_s)
-                        down_duration = 0
-                    else :
-                        if down_duration == 0:
-                            down_duration += int(0.015 * f_s)
+                            activity_start = start_ptr
+                            up_duration += step_size
                         else:
-                            down_duration += int(0.015 * f_s)
-                        if down_duration >= 0.25*f_s :
-                            if odd_trg == False:
-                                RMS_now = RMS(EMGs[i][activity_start: t_end-down_duration])
-                                RMS_previous = RMS(EMGs[i][round(activity_start-0.25*f_s): activity_start])
-                                if RMS_now > RMS_previous*2 :
-                                    activitys[i] = np.append(activitys[i],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
-                            else:
-                                activitys[i] = np.append(activitys[i],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
-                            up_duration = 0 
-                            odd_trg = False       
-                start += int(0.015 * f_s)
-                t_end += int(0.015 * f_s)
-            if up_duration > 0.1 * f_s :
-                activitys[i] = np.append(activitys[i],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
-        if len(activitys[i]) > 0 :
-            activities[i] = np.append(activities[i], np.array([activitys[i][0]]), axis=0)
-            for k in range(1,len(activitys[i])):
-                if activitys[i][k][0] - activities[i][-1][1] <= 0.25*f_s:
-                    activities[i][-1][1] = activitys[i][k][1]
+                            # Extend current activity segment
+                            down_duration = 0
+                            up_duration += step_size
+                    else:
+                        # Reset if RMS falls below threshold before fully establishing
+                        up_duration = 0
                 else:
-                    activities[i] = np.append(activities[i], np.array([activitys[i][k]]), axis=0)
-        
-        for j in range(len(activities[i])):
-            act = activities[i][j]
-            start = act[0] // f_s
-            end = act [1] // f_s
-            trg = 1
-            # if len(activitys[i]) != 0 :
-            #     RMS_now = RMS(EMGs[i][activities[i][j][0]: activities[i][j][1]])
-            #     RMS_previous = RMS(EMGs[i][activities[i][j][0] - int(0.25*f_s): activities[i][j][0]])
-            #     if RMS_now > RMS_previous*2 :
-            #         activitys[i] = np.append(activitys[i],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
-            for emg in abs(EMGs[i][act[0]:act[1]]):
-                if emg > 250e-6: trg = 0
-            for art in artifacts[i]:
-                if start<= art[1] <= end : trg = 0
-                if start<= art[0] <= end : trg = 0 
-                if art[0]<= start <= art[1]: trg = 0
-                if art[0]<= end <= art[1]: trg = 0
-            if trg ==1:
-                res_activities[i] = np.append(res_activities[i], np.array([act]), axis=0)
-        a=1
-    return res_activities
+                    # We are in a more established active period
+                    if window_rms >= detection_threshold:
+                        # Still active, extend activity
+                        up_duration += step_size
+                        down_duration = 0
+                    else:
+                        # Activity dropping
+                        down_duration += step_size
+                        # If inactivity is long enough, finalize this activity
+                        if down_duration >= 0.25 * f_s:
+                            # Double-check if this segment is valid
+                            if not odd_triggered:
+                                rms_now = RMS(channel_EMG[activity_start:end_ptr - down_duration])
+                                # Check previous baseline segment if possible
+                                prev_start = max(activity_start - int(0.25 * f_s), 0)
+                                rms_prev = RMS(channel_EMG[prev_start:activity_start])
+
+                                if rms_now > 2 * rms_prev:
+                                    detected_segments[ch_idx] = np.append(
+                                        detected_segments[ch_idx],
+                                        np.array([[activity_start, end_ptr - down_duration, 1]]),
+                                        axis=0
+                                    )
+                            else:
+                                detected_segments[ch_idx] = np.append(
+                                    detected_segments[ch_idx],
+                                    np.array([[activity_start, end_ptr - down_duration, 1]]),
+                                    axis=0
+                                )
+
+                            # Reset durations
+                            up_duration = 0
+                            odd_triggered = False
+
+                # Move forward in time by step_size
+                start_ptr += step_size
+                end_ptr += step_size
+
+            # If ended the epoch with ongoing activity
+            if up_duration > 0.1 * f_s:
+                detected_segments[ch_idx] = np.append(
+                    detected_segments[ch_idx],
+                    np.array([[activity_start, end_ptr - down_duration, 1]]),
+                    axis=0
+                )
+
+        # Merge close segments
+        if len(detected_segments[ch_idx]) > 0:
+            merged_segments[ch_idx] = np.append(merged_segments[ch_idx], [detected_segments[ch_idx][0]], axis=0)
+            for seg_idx in range(1, len(detected_segments[ch_idx])):
+                # If next segment starts within 0.25*f_s of the last merged segment, merge them
+                if detected_segments[ch_idx][seg_idx][0] - merged_segments[ch_idx][-1][1] <= 0.25 * f_s:
+                    merged_segments[ch_idx][-1][1] = detected_segments[ch_idx][seg_idx][1]
+                else:
+                    merged_segments[ch_idx] = np.append(merged_segments[ch_idx], [detected_segments[ch_idx][seg_idx]], axis=0)
+
+        # Filter merged segments by artifact presence and amplitude threshold
+        for seg in merged_segments[ch_idx]:
+            seg_start, seg_end, _ = seg
+            seg_start_time = seg_start // f_s
+            seg_end_time = seg_end // f_s
+            is_valid = True
+
+            # Check overlap with artifacts
+            if is_valid:
+                for art in channel_artifacts:
+                    art_start, art_end = art
+                    # Check for overlap
+                    if (seg_start_time <= art_end <= seg_end_time) or \
+                       (seg_start_time <= art_start <= seg_end_time) or \
+                       (art_start <= seg_start_time <= art_end) or \
+                       (art_start <= seg_end_time <= art_end):
+                        is_valid = False
+                        break
+                # 파라미터
+            f_s = 200  # 샘플링 레이트 가정
+
+            if is_valid:
+                # 세그먼트 신호 추출
+                seg_data = channel_EMG[seg_start:seg_end]
+
+                # FFT 계산
+                N = len(seg_data)
+                freqs = np.fft.rfftfreq(N, d=1/f_s)  # 양의 주파수 영역
+                fft_vals = np.fft.rfft(seg_data)
+                fft_mag = np.abs(fft_vals)
+
+                k = False
+                # 여기서 RWA 조건 추가
+                if is_valid:
+                    ranges = ((freqs >= 10) & (freqs < 55)) | ((freqs > 65) & (freqs <= 90))
+                    mean_p = np.mean(fft_mag[ranges])
+                    artifact_freq_range = (freqs >= 55) & (freqs <= 65)
+                    if np.any(artifact_freq_range):
+                        artifact_freq_max = np.max(fft_mag[artifact_freq_range])
+                    else:
+                        artifact_freq_max = 0
+                        
+                    if artifact_freq_max > 5 * mean_p:
+                        is_valid = False
+                
+            if is_valid:
+                final_activities[ch_idx] = np.append(final_activities[ch_idx], [seg], axis=0)
+                r_count[ch_idx] += 1
+            else:
+                count[ch_idx] += 1
+
+            count[ch_idx]/=r_count[ch_idx]+count[ch_idx]
+            count[ch_idx] *= 100
+    return final_activities,count
                 
 def make_event(activitys, epochs, f_s, artifacts):
     events30  = [np.empty((0,3),int) for _ in range(len(activitys))]
@@ -980,12 +1087,11 @@ def make_event(activitys, epochs, f_s, artifacts):
 # 1 tonic 0 phasic 2 any 10 none 11 ART
             
     return events3, events30
-
-
     
-def make_activity2( EMG, f_s ,event):
-    bouts = int(0.02 * f_s)
-    activitys  = [np.empty((0,3),int) for i in range(len(EMG))]
+def make_activity2(EMG, f_s, event):
+    bouts = int(0.03 * f_s)
+    activitys = [np.empty((0,3),int) for i in range(len(EMG))]
+
     for j in range(len(EMG)):
         if j == 0: lm = 0
         if j == 1: lm = 1
@@ -1000,38 +1106,90 @@ def make_activity2( EMG, f_s ,event):
                 end   = start + 30*f_s
                 up_duration = 0
                 down_duration = 0
+                activity_start = 0
                 baseline4 = float(RMS(EMG[j][ss : end]))*2
                 while t_end <= end :
                     rms = RMS(EMG[j][start : t_end])
-                    if up_duration < 5*bouts:
+                    if up_duration < 0.1*f_s:
                         if rms >= baseline4:
-                            if up_duration == 0 :
+                            if up_duration == 0:
                                 activity_start = start
-                                up_duration +=int(0.01 * f_s)
+                                up_duration += int(0.015 * f_s)
                             if activity_start != 0:
                                 down_duration = 0
-                                up_duration += int(0.01 * f_s)
+                                up_duration += int(0.015 * f_s)
                         else:
-                            up_duration =0
+                            up_duration = 0
                     else:
                         if rms >= baseline4:
-                            up_duration += int(0.01 * f_s)
+                            up_duration += int(0.015 * f_s)
                             down_duration = 0
-                        else :                      
-                            down_duration += int(0.01 * f_s)
-                            if down_duration >= 0.25*f_s :
-                                activitys[j] = np.append(activitys[j],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
-                                up_duration = 0        
-                                
-                    start += int(0.01 * f_s)
-                    t_end +=int(0.01 * f_s)
-                if up_duration >=5*bouts :
-                    activitys[j] = np.append(activitys[j],np.array([[activity_start,t_end-down_duration,1]]),axis =0 )
+                        else:
+                            down_duration += int(0.015 * f_s)
+                            if down_duration >= 0.25*f_s:
+                                activitys[j] = np.append(activitys[j], np.array([[activity_start, t_end-down_duration, 1]]), axis=0)
+                                up_duration = 0
+
+                    start += int(0.015 * f_s)
+                    t_end += int(0.015 * f_s)
+
+                if up_duration >= 0.1*f_s:
+                    activitys[j] = np.append(activitys[j], np.array([[activity_start, t_end-down_duration, 1]]), axis=0)
                 i += 10
 
-                
-    return activitys    
+        valid_segments = np.empty((0,3), int)
+        for seg in activitys[j]:
+            seg_start, seg_end, _ = seg
+            seg_data = EMG[j][seg_start:seg_end]
+            N = len(seg_data)
+            if N < 1:
+                continue
 
+            freqs = np.fft.rfftfreq(N, d=1/f_s)
+            fft_vals = np.fft.rfft(seg_data)
+            fft_mag = np.abs(fft_vals)
+
+            ranges = ((freqs >= 10) & (freqs < 55)) | ((freqs > 65) & (freqs <= 100))
+            if np.any(ranges):
+                mean_p = np.mean(fft_mag[ranges])
+            else:
+                mean_p = 0
+
+            artifact_freq_range = (freqs >= 55) & (freqs <= 65)
+            if np.any(artifact_freq_range):
+                artifact_freq_max = np.max(fft_mag[artifact_freq_range])
+            else:
+                artifact_freq_max = 0
+
+            # 아티팩트 판단: 55~65Hz 대역 최대값이 mean_p의 5배 초과하면 아티팩트
+            is_valid = True
+            if mean_p > 0 and (artifact_freq_max > 5 * mean_p):
+                is_valid = False
+
+            if is_valid:
+                valid_segments = np.append(valid_segments, [seg], axis=0)
+
+        activitys[j] = valid_segments
+
+        # 인접하거나 겹치는 세그먼트 병합 처리
+        if len(activitys[j]) > 0:
+            # 시작 시간 기준으로 정렬 (혹시 정렬 안되어 있을 경우)
+            activitys[j] = activitys[j][activitys[j][:,0].argsort()]
+
+            merged_segments = np.empty((0,3), int)
+            merged_segments = np.append(merged_segments, [activitys[j][0]], axis=0)
+
+            for seg_idx in range(1, len(activitys[j])):
+                # 다음 세그먼트의 시작점이 이전 세그먼트의 끝점으로부터 0.25초 내이면 병합
+                if (activitys[j][seg_idx][0] - merged_segments[-1][1]) <= 0.25 * f_s:
+                    # 이전 병합 세그먼트의 끝점을 현재 세그먼트 끝점으로 업데이트
+                    merged_segments[-1][1] = activitys[j][seg_idx][1]
+                else:
+                    merged_segments = np.append(merged_segments, [activitys[j][seg_idx]], axis=0)
+            
+            activitys[j] = merged_segments
+
+    return activitys
 
 def make_event2(activitys, f_s,event): 
     for i in range(len(event)): 
@@ -1058,7 +1216,6 @@ def make_event2(activitys, f_s,event):
         i+=1        
     return event
 
-
 def data_for_plot(events, start , f_s):
     datas = [[[0,0,0] for _ in range(len(events[i]))] for i in range(len(events))]
     
@@ -1077,12 +1234,10 @@ def data_for_plot_ac(act, start, f_s):
         for j in range(len(act[i])):
             d_act[i][j][0] = start + dt.timedelta(microseconds=int(act[i][j][0]/f_s*1000000))
             d_act[i][j][1] = start + dt.timedelta(microseconds=int(act[i][j][1]/f_s*1000000))
-            # if d_act[i][j][0] == d_act[i][j][1] : d_act[i][j][1] += dt.timedelta(seconds=1)
             d_act[i][j][2] = round((act[i][j][1] - act[i][j][0])/f_s,2)
             
     return d_act
     
-
 def createFolder(directory):
     try:
         if not os.path.exists(directory):
@@ -1184,7 +1339,6 @@ def get_ac_RWA(act, epoch,fs):
         for ac  in act[i] : tot_ac  += ( ac[1]- ac[0])
         ac_RWA[i] = tot_ac/fs/tot_rem
     return ac_RWA
-
 
 def export_plot_AASM_xml(datas, hypnogram, RWA, channel,path):
     hx = np.array([h[0] for h in hypnogram])
@@ -1411,7 +1565,6 @@ def write_CRWA(path, hypnogram, RWA_score,RWA_mean,RWA_percentile,RWA_freq,d_act
     wb.close()   
     gc.collect()
     
-    
 def export_plot_act_data_xml(act, hypnogram, RWA_ac, ch,path):
     hx = np.array([h[0] for h in hypnogram])
     hx_e = np.array([h[1] for h in hypnogram])
@@ -1630,9 +1783,6 @@ def write_RAI(path, hypnogram, d_event, channel, RAI):
     wb.save(result_path)
     wb.close()
     gc.collect()
-    
-
-
 
 def make_RWA(event, channel, RWA_AASM): #ch epoch event
     RWA = [[0,0,0,0] for _ in channel]
@@ -1673,7 +1823,6 @@ def make_event3(event):
                 
     return events3
     
-
 def make_RAI(EMGs, f_s, epochs, artifacts):
     bouts = int(1*f_s)
     rais = [1000 for _ in epochs]
@@ -1756,28 +1905,6 @@ def get_art_duration(artifacts,epochs):
         a = 1
     return dur
         
-
-RWA_Event = ["Any","Phasic", "Intermediate", "Tonic"]
-percentile = [50, 80, 95]
-ev_index = {
-    0 : [0,3,4], # Tonic
-    1 : [2,4], # Intermediate
-    2 : [1,3], # Phasic
-    3 : [0,1,2,3,4] # Any
-}
-
-ev_index_AASM = {
-    0 : [0], # Tonic
-    1 : [1], # Phasic
-    2 : [0,1,2], # Any
-}
-
-para = [
-    "RWAC_T","DURmean_T","p50_T","p80_T","p95_T","RWAI_T",
-    "RWAC_I","DURmean_I","p50_I","p80_I","p95_I","RWAI_I",
-    "RWAC_P","DURmean_P","p50_P","p80_P","p95_P","RWAI_P",
-    "RWAC_A","DURmean_A","p50_A","p80_A","p95_A","RWAI_A",
-]
 def merge_arts(A,B):
     # 모든 이벤트를 하나의 리스트로 합침
     A_start = []; A_end = []
@@ -1817,17 +1944,35 @@ def merge_arts(A,B):
                 merged.append([current_start, time])
     
     return np.array(merged)
-def merge_events(A,B):
-    # 모든 이벤트를 하나의 리스트로 합침
+
+
+def merge_events(A, B, tolerance=50):
+    """
+    A와 B에 포함된 이벤트 (start, end) 구간을 병합하는 함수.
+    이벤트가 겹치거나, 겹치지 않더라도 시작점과 끝점 사이 간격이 'tolerance' 이하인 경우 하나로 병합한다.
+    
+    Parameters
+    ----------
+    A, B : list of lists or arrays
+        각 원소는 [start, end] 형태의 이벤트 구간
+    tolerance : float or int
+        두 이벤트 사이의 최대 허용 간격. 이 간격 이하이면 하나의 이벤트로 병합.
+
+    Returns
+    -------
+    np.array
+        [start, end, 1] 형태의 병합된 이벤트 배열
+    """
+    
     A_start = []; A_end = []
     for a in A:
         A_start.append(a[0])
         A_end.append(a[1])
 
     B_start = []; B_end = []
-    for a in B:
-        B_start.append(a[0])
-        B_end.append(a[1])
+    for b in B:
+        B_start.append(b[0])
+        B_end.append(b[1])
         
     events = []
     for start, end in zip(A_start, A_end):
@@ -1841,21 +1986,36 @@ def merge_events(A,B):
     events.sort()
     
     merged = []
-    
     active_events = 0
     current_start = None
     
-    for time, type in events:
-        if type == 'start':
+    # 겹치는 이벤트 처리(기존 로직)
+    for time, etype in events:
+        if etype == 'start':
             if active_events == 0:
                 current_start = time
             active_events += 1
-        elif type == 'end':
+        elif etype == 'end':
             active_events -= 1
             if active_events == 0:
-                merged.append([current_start, time,1])
+                merged.append([current_start, time, 1])
     
-    return np.array(merged)
+    # 이제 merged에는 겹치는 이벤트가 하나로 합쳐진 상태
+    # 여기서 tolerance 이내로 근접한 이벤트를 추가로 병합
+    merged = np.array(merged)
+    if len(merged) == 0:
+        return merged
+    
+    final_merged = [merged[0]]
+    for i in range(1, len(merged)):
+        # 이전 이벤트의 끝과 현재 이벤트의 시작 사이의 간격 확인
+        if merged[i][0] - final_merged[-1][1] <= tolerance:
+            # 두 이벤트를 병합: 기존 이벤트의 끝 시간을 현재 이벤트의 끝 시간으로 확장
+            final_merged[-1][1] = merged[i][1]
+        else:
+            final_merged.append(merged[i])
+    
+    return np.array(final_merged)
 
 def combine_act(acts,triggers):
     res = [[] for _ in [0,1,2,3,4]]
@@ -1878,6 +2038,18 @@ def combine_act(acts,triggers):
     for i in range(5):
         if triggers[i] == False:
             res[i] = np.array([])   
+
+    ress = []        
+    for i in range(5):
+        temp =[]
+        for r in res[i]:
+            trg = 1
+            for t in temp:
+                if r[0] == t[0] and r[1] == t[1]:
+                    trg = 0
+            if trg == 0: continue
+            temp.append(r)
+        ress.append(np.array(temp))
     return res
 
 def combine_art(acts,triggers):
@@ -1933,10 +2105,6 @@ def merge_rai(a,b):
     art_num = np.sum(res == 2) + np.sum(res == -1)
     rai = np.sum(res == 1) / (len(res) - art_num)
     return res, rai
-act_duration = [[],[],[],[],[],[]]
-mean_duration = [[],[],[],[],[],[]]
-num_subjects = [ 0, 0, 0 ,0 ,0]
-
 
 def comb_event(events,triggers): #ch ep [s,e,t]
     res = [[] for _ in [0,1,2,3,4]]
@@ -1964,32 +2132,46 @@ def comb_event(events,triggers): #ch ep [s,e,t]
 
 def merge_ev(A, B):
     res = []
+    A = np.array(A)
+    B = np.array(B)
+
+    # A와 B 모두 [s,e,t] 형태라고 가정
     for i in range(len(A)):
-        t = -1
+        matched_index = -1
         for j in range(len(B)):
             if A[i][0] == B[j][0]:
-                t = j
-        if t == -1:
+                matched_index = j
+                break
+        if matched_index == -1:
+            # B와 시작 시간이 일치하는 이벤트를 찾지 못한 경우 다음 i로 진행
             continue
 
-        # Create a shallow copy to ensure the original A[i] is not modified
-        tt = A[i][:]  # This is a shallow copy
+        # 깊은 복사로 A[i]의 수정이 원본에 영향 주지 않도록 함
+        tt = A[i].copy()
 
-        if (1 in [A[i][2], B[t][2]] or 2 in [A[i][2], B[t][2]] or 10 in [A[i][2], B[t][2]]) and 0 in [A[i][2], B[t][2]]:
-            tt[2] = 0
-            res.append(tt)
-        elif 11 in [A[i][2], B[t][2]]:
+        valA = A[i][2]
+        valB = B[matched_index][2]
+
+        # 각각의 상태값이 어떤 것인지 판단하기 쉽게 집합으로 처리
+        vals = {valA, valB}
+        if 11 in vals:
             tt[2] = 11
-            res.append(tt)
-        elif 10 in [A[i][2], B[t][2]]:
-            if A[i][2] < 5:
-                tt[2] = A[i][2]
-            if B[t][2] < 5:
-                tt[2] = B[t][2]
-            res.append(tt)
+        # 조건 로직 유지: 어떤 상태값들이 있는지에 따라 tt[2] 결정
+        elif (1 in vals or 2 in vals or 10 in vals) and 0 in vals:
+            tt[2] = 0
+        elif 10 in vals:
+            # 여기서 A[i][2]나 B[matched_index][2] 중 5보다 작은 값이 있으면 그것으로 설정
+            # 원본 로직 상 valA나 valB 둘 중 하나가 5 미만이면 tt[2]를 해당 값으로 함
+            if valA < 5:
+                tt[2] = valA
+            if valB < 5:
+                tt[2] = valB
         else:
-            tt[2] = max(A[i][2], B[t][2])
-            res.append(tt)
-    
+            # 위 조건에 해당하지 않으면 단순히 최대값을 취함
+            tt[2] = max(valA, valB)
+        
+        res.append(tt)
+
     return np.array(res)
+
                 
