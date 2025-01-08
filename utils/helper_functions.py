@@ -978,114 +978,176 @@ def make_activity(baselines, artifacts, EMGs, f_s, epochs):
             count[ch_idx]/=r_count[ch_idx]+count[ch_idx]
             count[ch_idx] *= 100
     return final_activities,count
-                
 def make_event(activitys, epochs, f_s, artifacts):
-    events30  = [np.empty((0,3),int) for _ in range(len(activitys))]
-    events3  = [np.empty((0,3),int) for _ in range(len(activitys))]
-    tonic_duration = 0
-    i_cut = tonic_cut = 5 * f_s
+    # 상수 정의
+    TONIC_CUT = 5 * f_s       # tonic 판단 기준(5초)
+    LONG_DURATION = 15 * f_s  # 30초 구간에서 '길게 활성' 판단 기준(15초)
+    SHORT_SEG = 3 * f_s       # 3초 세그먼트 단위
+    SEG_COUNT_30S = 10        # 30초를 3초로 나눴을 때 세그먼트 수 (30/3=10)
 
-    for i in range(len(activitys)):
-        for j in range(len(epochs[i])):
-            epoch = epochs[i][j]
-            e_start = epoch[0] * f_s
-            e_end   = epoch[1] * f_s
-            
+    events30 = [np.empty((0, 3), int) for _ in range(len(activitys))]
+    events3 = [np.empty((0, 3), int) for _ in range(len(activitys))]
+
+    # 30초 단위 이벤트 분류
+    for ch_idx in range(len(activitys)):
+        channel_activities = activitys[ch_idx]
+        channel_epochs = epochs[ch_idx]
+        channel_artifacts = artifacts[ch_idx]
+
+        for epoch_idx, epoch in enumerate(channel_epochs):
+            e_start = int(epoch[0] * f_s)
+            e_end = int(epoch[1] * f_s)
+
             duration = 0
-            for j in range(len(activitys[i])):
-                a_start = activitys[i][j][0]
-                a_end   = activitys[i][j][1] 
-                if a_end - a_start < 5*f_s : continue
-                if  a_start <= e_start < a_end <= e_end :
-                    duration += a_end - e_start
-                if e_start < a_start < a_end <= e_end  :
-                    duration += a_end - a_start  
-                if e_start <= a_start < e_end <= a_end :
-                    duration += e_end - a_start           
-                if a_start <= e_start < e_end <= a_end :
-                    duration += e_end - e_start
+            tonic_duration = 0
 
-            art_trg = 0    
-            for t in range(len(artifacts[i])):
-                art = artifacts[i][t]
-                if art[0]*200 <= e_start <= art[1]*200: art_trg = 1; break
-                if art[0]*200 <= e_end <=art[1]*200: art_trg = 1; break  
-                if  e_start<= art[0]*200 <=e_end: art_trg = 1; break  
-            if  duration >= 15*f_s :
-                events30[i]  = np.append(events30[i], np.array([[e_start,e_end,0]]),axis =0 )
+            # 현재 epoch 안에서 activity 길이 계산
+            for act_idx in range(len(channel_activities)):
+                a_start = channel_activities[act_idx][0]
+                a_end = channel_activities[act_idx][1]
+
+                # 활동 길이가 5초 미만이면 무시
+                if a_end - a_start < TONIC_CUT:
+                    continue
+
+                # epoch 내에서 활동 구간(a_start~a_end)과 epoch(e_start~e_end) 겹치는 부분 계산
+                overlap_start = max(e_start, a_start)
+                overlap_end = min(e_end, a_end)
+
+                if overlap_end > overlap_start:
+                    overlap_len = overlap_end - overlap_start
+                    # tonic 기준 시간 이상 겹치면 tonic_duration에 추가
+                    tonic_duration += overlap_len
+
+            # 아티팩트 여부 판단
+            art_trg = 0
+            for art_idx in range(len(channel_artifacts)):
+                # 아티팩트 시간을 샘플로 변환했다고 가정 (art[0], art[1]는 초단위라 가정)
+                art = channel_artifacts[art_idx]
+                art_start = int(art[0] * f_s)
+                art_end = int(art[1] * f_s)
+                
+                overlap_start = max(e_start, a_start)
+                overlap_end = min(e_end, a_end)
+                # epoch 구간과 아티팩트 구간이 겹치는지 체크
+                if (art_start <= e_start <= art_end) or \
+                   (art_start <= e_end <= art_end) or \
+                   (e_start <= art_start <= e_end):
+                    art_trg = 1
+                    break
+
+            # 30초 epoch에 대한 이벤트 분류
+            # duration >= 15초면 tonic
+            if tonic_duration >= LONG_DURATION:
+                events30[ch_idx] = np.append(events30[ch_idx], np.array([[e_start, e_end, 0]]), axis=0)
             elif art_trg == 1:
-                events30[i]  = np.append(events30[i], np.array([[e_start,e_end,11]]),axis =0 )
+                events30[ch_idx] = np.append(events30[ch_idx], np.array([[e_start, e_end, 11]]), axis=0)
             else:
-                events30[i]  = np.append(events30[i], np.array([[e_start,e_end,10]]),axis =0 )
-                
-                
-    
-    for i in range(len(activitys)):
-        for j in range(len(epochs[i])):
-            epoch = epochs[i][j]
-            e_start = epoch[0] * f_s
-            e_end   = epoch[1] * f_s
+                # 이도 저도 아니면 10
+                events30[ch_idx] = np.append(events30[ch_idx], np.array([[e_start, e_end, 10]]), axis=0)
+                     # 아티팩트 있으면 11
 
+
+    # 3초 단위 이벤트 분류
+    for ch_idx in range(len(activitys)):
+        channel_activities = activitys[ch_idx]
+        channel_epochs = epochs[ch_idx]
+        channel_artifacts = artifacts[ch_idx]
+
+        for epoch_idx, epoch in enumerate(channel_epochs):
+            e_start = int(epoch[0] * f_s)
+            e_end = int(epoch[1] * f_s)
+
+            # 3초씩 잘라서 이벤트 분류
             e_t_start = e_start
-            e_t_end = epoch[0]*f_s+3* f_s
+            e_t_end = e_start + SHORT_SEG
 
-            if events30[i][j][2] ==0: 
-                for _ in range(10):
-                    events3[i]  = np.append(events3[i], np.array([[e_t_start,e_t_end,0]]),axis =0 )
-                    e_t_start += 3*f_s
-                    e_t_end += 3*f_s
+            # 30초 이벤트 결과에 따른 처리
+            # 만약 30초 이벤트가 tonic이라면 3초 구간 전부 tonic으로
+            if events30[ch_idx][epoch_idx][2] == 0:
+                for _ in range(SEG_COUNT_30S):
+                    events3[ch_idx] = np.append(events3[ch_idx], np.array([[e_t_start, e_t_end, 0]]), axis=0)
+                    e_t_start += SHORT_SEG
+                    e_t_end += SHORT_SEG
+                # 다음 epoch으로
                 continue
-            
+
+            # 그 외 경우 3초 단위로 세분화
             while e_t_end <= e_end:
-                tonic_duration = 0
                 duration = 0
-                for t in range(len(activitys[i])):
-                    a_start = activitys[i][t][0]
-                    a_end   = activitys[i][t][1] 
-                    if  a_start <= e_t_start < a_end <= e_t_end :
-                        duration += a_end - e_t_start
-                        if a_end - a_start >= i_cut: tonic_duration += a_end - e_t_start
-                    if e_t_start < a_start < a_end <= e_t_end  :
-                        duration += a_end - a_start  
-                        if a_end - a_start >= i_cut: tonic_duration += a_end - a_start             
-                    if e_t_start <= a_start < e_t_end <= a_end :
-                        duration += e_t_end - a_start           
-                        if a_end - a_start >= i_cut: tonic_duration += e_t_end - a_start
-                    if a_start <= e_t_start < e_t_end <= a_end :
-                        duration += e_t_end - e_t_start
-                        if a_end - a_start >= i_cut: tonic_duration += e_t_end - e_t_start 
-                art_trg = 0    
-                for t in range(len(artifacts[i])):
-                    art = artifacts[i][t]
-                    if art[0]*200 <= e_t_start <= art[1]*200: art_trg = 1; break
-                    if art[0]*200 <= e_t_end <=art[1]*200: art_trg = 1; break 
-                    if  e_start<= art[0]*200 <=e_end: art_trg = 1; break  
+                tonic_duration = 0
+
+                # 3초 구간 내 activity 계산
+                for act_idx in range(len(channel_activities)):
+                    a_start = channel_activities[act_idx][0]
+                    a_end = channel_activities[act_idx][1]
+
+                    overlap_start = max(e_t_start, a_start)
+                    overlap_end = min(e_t_end, a_end)
+
+                    if overlap_end > overlap_start:
+                        overlap_len = overlap_end - overlap_start
+                        
+                        if a_end-a_start >= TONIC_CUT:
+                            tonic_duration += overlap_len
+                        else:
+                            duration += overlap_len
+
+                # 아티팩트 체크
+                art_trg = 0
+                for art_idx in range(len(channel_artifacts)):
+                    art = channel_artifacts[art_idx]
+                    art_start = int(art[0] * f_s)
+                    art_end = int(art[1] * f_s)
+
+                    if (art_start <= e_t_start <= art_end) or \
+                       (art_start <= e_t_end <= art_end) or \
+                       (e_t_start <= art_start <= e_t_end):
+                        art_trg = 1
+                        break
+
+                # 3초 이벤트 분류
+                # tonic_duration > 0 이면 intermediate
                 if tonic_duration > 0:
-                    events3[i]  = np.append(events3[i], np.array([[e_t_start,e_t_end,2]]),axis =0 )
-                elif duration > 0 :
-                    events3[i]  = np.append(events3[i], np.array([[e_t_start,e_t_end,1]]),axis =0 ) 
+                    events3[ch_idx] = np.append(events3[ch_idx], np.array([[e_t_start, e_t_end, 2]]), axis=0)
+                # duration > 0 이면 phasic
+                elif duration > 0:
+                    events3[ch_idx] = np.append(events3[ch_idx], np.array([[e_t_start, e_t_end, 1]]), axis=0)
+                # 아티팩트 있으면 11
                 elif art_trg == 1:
-                    events3[i]  = np.append(events3[i], np.array([[e_t_start,e_t_end,11]]),axis =0 )
+                    events3[ch_idx] = np.append(events3[ch_idx], np.array([[e_t_start, e_t_end, 11]]), axis=0)
                 else:
-                    events3[i]  = np.append(events3[i], np.array([[e_t_start,e_t_end,10]]),axis =0 ) 
+                    # 아무것도 아니면 10
+                    events3[ch_idx] = np.append(events3[ch_idx], np.array([[e_t_start, e_t_end, 10]]), axis=0)
 
-                e_t_start += 3*f_s
-                e_t_end += 3*f_s
+                e_t_start += SHORT_SEG
+                e_t_end += SHORT_SEG
 
-            count = 0
-            all_count = 0
-            for l in range(10):
-                if events3[i][-l-1][2] == 1:
-                    count += 1
-                if events3[i][-l-1][2] not in [10,11]:
-                    all_count +=1
-            if count >= 5:
-                events30[i][j][2] = 1
-            elif all_count >=5:
-                events30[i][j][2] = 2
-        A= 1
-# 1 tonic 0 phasic 2 any 10 none 11 ART
-            
+            if events30[ch_idx][epoch_idx][2] != 10: continue
+            # 마지막으로 30초 이벤트 재검토
+            # 마지막 10개의 3초 세그먼트에서 phasic(1) 세그먼트 카운팅
+            count_phasic = 0
+            count_non_idle = 0
+            count_art = 0
+            # 뒤에서부터 10개 세그먼트 체크 (3초 세그먼트는 10개 = 30초)
+            for seg_offset in range(SEG_COUNT_30S):
+                seg_event = events3[ch_idx][-seg_offset-1][2]
+                if seg_event == 1:
+                    count_phasic += 1
+                if seg_event not in [10, 11]:  # 10=none,11=ART 제외
+                    count_non_idle += 1
+                if seg_event ==11:
+                    count_art +=1
+
+            # count_phasic >= 5이면 events30의 이벤트를 1(phasic)로 업데이트
+            # if count_art >=5:
+            #     events30[ch_idx][epoch_idx][2] = 11
+            if count_phasic >= 5:
+                events30[ch_idx][epoch_idx][2] = 1
+            # tonic(0), phasic(1) 아닌 나머지들 중 non_idle >=5면 2(any)로 업데이트
+            elif count_non_idle >= 5 and events30[ch_idx][epoch_idx][2] != 0:
+                events30[ch_idx][epoch_idx][2] = 2
+
     return events3, events30
     
 def make_activity2(EMG, f_s, event):
