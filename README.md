@@ -1,5 +1,10 @@
-# Automated REM Sleep without Atonia Detection Algorithm (AURA)
+# Automated REM Sleep without Atonia Detection Algorithm - Seoul National University (AURA-SNU)
 -Provides RWA quantification results by CRWA%, SINBAR, AASM, and RAI methods.
+
+## publication
+Tae-Gon Noh, et al. "Continuous REM sleep without atonia quantification improves prediction of phenoconversion to α-synucleinopathies in isolated REM sleep behavior disorder." Sleep Medicine 129 (2025): 394-401.
+
+<img width="1735" height="886" alt="image" src="https://github.com/user-attachments/assets/47dd6cb4-066c-4e4a-849b-9a679b192b13" />
 
 ## Features
 - Load and analyze REM sleep data from `.edf` and `.xlsx` files.
@@ -8,8 +13,8 @@
 
 ## usage
 1. Run the application:
-2. Use the "Select Data File" button to load a `.edf` file.
-3. Use the "Select Event File" button to load a `.xlsx` event file from RemLogic. Before selecting, please note that the event file extracted by REMLogic is in .txt format, so please change it to .xlsx.
+2. Use the "Select Data File" button to load an `.edf` file.
+3. Use the "Select Event File" button to load an `.xlsx` event file from RemLogic.
 4. Use the "Select Result Folder" button to choose where to save the results.
 5. Click "Start Analysis" to begin the process.
 
