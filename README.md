@@ -2,7 +2,7 @@
 -Provides RWA quantification results by CRWA%, SINBAR, AASM, and RAI methods.
 
 ## publication
-Tae-Gon Noh, et al. "Continuous REM sleep without atonia quantification improves prediction of phenoconversion to α-synucleinopathies in isolated REM sleep behavior disorder." Sleep Medicine 129 (2025): 394-401.
+Tae-Gon Noh, et al. "Continuous REM sleep without atonia quantification improves prediction of phenoconversion to α-synucleinopathies in isolated REM sleep behavior disorder." Sleep Medicine 129 (2025): 394-401. https://doi.org/10.1016/j.sleep.2025.03.013
 
 <img width="1735" height="886" alt="image" src="https://github.com/user-attachments/assets/47dd6cb4-066c-4e4a-849b-9a679b192b13" />
 
